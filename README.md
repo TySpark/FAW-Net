@@ -1,6 +1,6 @@
 # FAW-Net: A Physics-Guided Frequency-Adaptive Weighting Network for Magnetotelluric Impedance Estimation
 
-深度学习驱动的大地电磁（Magnetotelluric, MT）功率谱智能加权去噪框架。
+深度学习驱动的大地电磁（Magnetotelluric, MT）功率谱智能加权处理框架。
 
 本仓库实现了论文中的核心模型 **FreqAdaptWeighter（FAW-Net）**：对同一测站、同一频点下的多个功率谱段进行自适应加权，抑制噪声段、保留可靠段，从而得到更稳健的阻抗与视电阻率/相位响应。
 
@@ -14,7 +14,7 @@
 2. **频率内建模（CSA + FDC）**：
    - **Cross-Segment Attention（CSA）**：同一频点内谱段间自注意力，捕捉段间一致性；
    - **Frequency-conditioned Dynamic Conv1D（FDC）**：由频率生成卷积核，低频用更大感受野、高频保留细节。
-3. **跨频率建模（CFA）**：基于趋肤深度 \(\delta \propto \sqrt{\rho/f}\) 构造物理偏置注意力，让相邻频率互相「作证」，识别局部异常。
+3. **跨频率建模（CFA）**：基于趋肤深度 $\delta \propto \sqrt{\rho/f}$ 构造物理偏置注意力，让相邻频率互相「作证」，识别局部异常。
 4. **门控融合与权重输出**：FusionGate 自适应融合段级局部特征与频率级全局特征，经温度化 Softmax 输出每个频点各谱段的归一化权重。
 5. **物理约束多任务损失**：
    - MSE 监督（相对目标阻抗响应）；
@@ -22,11 +22,11 @@
    - 权重极化/稀疏单边约束（防止 one-hot 崩塌）；
    - 因果性约束。
 
-加权后的功率谱矩阵经最小二乘重新求阻抗，得到去噪后的 \(\rho_{xy}/\rho_{yx}\)、\(\phi_{xy}/\phi_{yx}\) 等响应。
+加权后的功率谱矩阵经最小二乘重新求阻抗，得到处理后的 $\rho_{xy}/\rho_{yx}$、$\phi_{xy}/\phi_{yx}$ 等响应。
 
 ## 示例结果
 
-交互式查看器（`viewer.py`）界面：左侧为去噪前后 \(\rho/\phi\) 曲线，右侧为当前频点上的谱段权重散点：
+交互式查看器（`viewer.py`）界面：左侧为处理前后 $\rho/\phi$ 曲线，右侧为当前频点上的谱段权重散点：
 
 ![FAW-Net Viewer](docs/assets/viewer_fig.png)
 
@@ -43,8 +43,8 @@ src_2_github/
 ├── t_calc.py             # PyTorch 版阻抗 / 视电阻率 / 相位计算
 ├── cdataset.py           # Dataset、特征筛选、训练/验证划分
 ├── trainer.py            # 训练循环、权重保存、粗糙度监控
-├── denoise.py            # 推理与批量去噪入口
-├── visualization.py      # 权重、阻抗、去噪前后对比等可视化
+├── denoise.py            # 推理与批量处理入口
+├── visualization.py      # 权重、阻抗、处理前后对比等可视化
 ├── viewer.py             # PySide6 交互式结果查看器（可选）
 ├── main_run_train.py     # 训练示例入口
 ├── test_load_pkl.py      # 数据格式检查脚本
@@ -67,7 +67,7 @@ src_2_github/
    完整数据集中包含多期野外采集项目与合作单位提供的测站资料，其再分发需遵守相应数据使用约定。在获得完整公开许可之前，本仓库仅提供用于代码验证与结果复现演示的**代表性子集**。
 
 3. **优先保证方法可验证、结果可对照**  
-   `best_model.pth` 保存的是论文实验训练结束后得到的最终模型参数。读者无需重新训练即可在公开示例站点上复现推理流程：加载权重 → 谱段加权 → 重估阻抗 → 对比去噪前后视电阻率/相位曲线。这与论文中报告的指标对照路径一致，便于审稿人与后续研究独立核查。
+   `best_model.pth` 保存的是论文实验训练结束后得到的最终模型参数。读者无需重新训练即可在公开示例站点上复现推理流程：加载权重 → 谱段加权 → 重估阻抗 → 对比处理前后视电阻率/相位曲线。这与论文中报告的指标对照路径一致，便于审稿人与后续研究独立核查。
 
 4. **训练代码仍完整开放**  
    `main_run_train.py`、`cdataset.py`、`loss.py`、`trainer.py` 与模型实现一并公开。研究者可按下一节的数据格式，用自有或公开 MT 数据集自行训练与微调。
@@ -164,7 +164,7 @@ use_phase_tensor_main=True
 
 ## 快速开始
 
-### 1. 使用论文训练结果模型去噪
+### 1. 使用论文训练结果模型进行推理
 
 `best_model.pth` 为论文训练得到的最优权重，可直接在仓库示例站点上复现推理流程（无需重新训练）：
 
@@ -192,7 +192,7 @@ psms, params, weights, single_psms = denoise_by_pkl(
     use_phase_tensor_angles=False,
 )
 
-plot_before_after_rho_phi(single_psms, psms, name=f"{pkl.stem} Denoised")
+plot_before_after_rho_phi(single_psms, psms, name=f"{pkl.stem} Processed")
 plot_weights_heatmap(weights, title=f"{pkl.stem} — Weight Heatmap")
 plot_weight_curve(weights, title=f"{pkl.stem} — Weight vs Frequency")
 ```
@@ -200,8 +200,6 @@ plot_weight_curve(weights, title=f"{pkl.stem} — Weight vs Frequency")
 ### 2. 训练（代码流程演示）
 
 参考 `main_run_train.py`。仓库内 `pkl/` 仅为部分示例站点，**完整复现论文训练请按上文说明准备全量数据**；下列配置与论文实验一致，便于理解训练管线：
-
-````python
 
 ```python
 from pathlib import Path
@@ -247,7 +245,7 @@ trainer = Trainer(
     save_dir=Path("checkpoints"),
 )
 trainer.run(train_loader=train_loader, epochs=epochs, val_loader=val_loader)
-````
+```
 
 ### 3. 交互式查看器
 
@@ -255,7 +253,7 @@ trainer.run(train_loader=train_loader, epochs=epochs, val_loader=val_loader)
 python viewer.py
 ```
 
-可在 GUI 中浏览测站、频点、权重散点与去噪前后 \(\rho/\phi\) 曲线。
+可在 GUI 中浏览测站、频点、权重散点与处理前后 $\rho/\phi$ 曲线。
 
 ---
 
@@ -290,7 +288,7 @@ python viewer.py
 - `plot_single_freq_impedance`：单频点阻抗幅值/相位
 - `plot_single_freq_features`：按权重排序的输入特征
 - `plot_weights_heatmap` / `plot_weight_curve`：全频点权重热图与曲线
-- `plot_before_after_rho_phi`：去噪前后 \(\rho/\phi\) 对比
+- `plot_before_after_rho_phi`：处理前后 $\rho/\phi$ 对比
 - `plot_denoise_dashboard`：单频点或全频点综合面板
 
 ---
