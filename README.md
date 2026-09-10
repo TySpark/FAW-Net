@@ -24,6 +24,20 @@
 
 加权后的功率谱矩阵经最小二乘重新求阻抗，得到去噪后的 \(\rho_{xy}/\rho_{yx}\)、\(\phi_{xy}/\phi_{yx}\) 等响应。
 
+## 示例结果
+
+测站 **ANH0107A** 的视电阻率与相位响应：
+
+![Resistivity and phase of ANH0107A](docs/assets/rho_phi_ANH0107A.png)
+
+对应频点上的谱段权重分布（模型对各功率谱段的信任程度，颜色越深权重越高）：
+
+![Segment weights](docs/assets/segment_weights.png)
+
+更完整的多分量响应对比：
+
+![Full resistivity and phase](docs/assets/rho_phi_full_ANH0107A.png)
+
 ---
 
 ## 仓库结构
@@ -44,6 +58,7 @@ src_2_github/
 ├── test_load_pkl.py      # 数据格式检查脚本
 ├── requirements.txt      # Python 依赖
 ├── best_model.pth        # 论文训练得到的最优模型权重
+├── docs/assets/          # README 示例图
 └── pkl/                  # 部分示例测站数据（非完整训练集）
 ```
 
