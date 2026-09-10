@@ -1,0 +1,14 @@
+# FAW-Net dependencies
+# Python >= 3.10 recommended (developed with 3.12)
+
+# --- Core (required for training / inference / plotting) ---
+torch>=2.0
+numpy>=1.24
+matplotlib>=3.7
+scienceplots>=2.1
+tqdm>=4.65
+
+# --- Optional: interactive GUI viewer (viewer.py) ---
+# Not required for training or batch denoising.
+PySide6>=6.5
+pyqtgraph>=0.13
