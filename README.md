@@ -26,21 +26,9 @@
 
 ## 示例结果
 
-测站 **ANH0107A** 的视电阻率与相位响应：
-
-![Resistivity and phase of ANH0107A](docs/assets/rho_phi_ANH0107A.png)
-
-对应频点上的谱段权重分布（模型对各功率谱段的信任程度，颜色越深权重越高）：
-
-![Segment weights](docs/assets/segment_weights.png)
-
 交互式查看器（`viewer.py`）界面：左侧为去噪前后 \(\rho/\phi\) 曲线，右侧为当前频点上的谱段权重散点：
 
 ![FAW-Net Viewer](docs/assets/viewer_fig.png)
-
-更完整的多分量响应对比：
-
-![Full resistivity and phase](docs/assets/rho_phi_full_ANH0107A.png)
 
 ---
 
