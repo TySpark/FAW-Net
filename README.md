@@ -34,6 +34,10 @@
 
 ![Segment weights](docs/assets/segment_weights.png)
 
+交互式查看器（`viewer.py`）界面：左侧为去噪前后 \(\rho/\phi\) 曲线，右侧为当前频点上的谱段权重散点：
+
+![FAW-Net Viewer](docs/assets/viewer_fig.png)
+
 更完整的多分量响应对比：
 
 ![Full resistivity and phase](docs/assets/rho_phi_full_ANH0107A.png)
