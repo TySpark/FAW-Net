@@ -9,7 +9,7 @@ from .struct import PowerSpectrumMatrix, SinglePSM
 
 
 # ==========================================
-# 1. 动态特征筛选生成器
+# 1. Dynamic feature selection generator
 # ==========================================
 def create_feature_selector(
     use_impedance: bool,
@@ -19,10 +19,12 @@ def create_feature_selector(
     use_phase_tensor_main: bool,
 ) -> Callable[[np.ndarray], np.ndarray]:
     """
-    根据物理模块开关，生成一个裁剪特征的函数。
-    返回的函数接收 (n, 30) 的 Tensor，返回 (n, selected_dim) 的 Tensor。
+    Build a feature-cropping function based on the physical module switches.
+
+    The returned function takes an (n, 30) tensor and returns an
+    (n, selected_dim) tensor.
     """
-    # 按照你的 to_deal_two 方法的特征拼装顺序
+    # Feature assembly order matches the to_deal_two method
     indices = []
 
     if use_impedance:
@@ -39,7 +41,7 @@ def create_feature_selector(
     idx_array = np.array(indices)
 
     def selector(x: np.ndarray) -> np.ndarray:
-        # 将 idx_tensor 放到与数据相同的设备上再切片
+        # Index into the feature dimension (device-safe slice)
         return x[:, idx_array]
 
     return selector
@@ -50,7 +52,7 @@ def _calc_model_output(
     features: dict[float, torch.Tensor],
     psms: list[PowerSpectrumMatrix],
 ) -> tuple[dict[float, np.ndarray], list[SinglePSM]]:
-    # 开启推理模式
+    # Enable evaluation / inference mode
     model.eval()
     with torch.no_grad():
         out = model(features)
@@ -135,7 +137,7 @@ def denoise_by_pkl(
     | dict[str, dict[float, np.ndarray]],
     list[SinglePSM] | list[list[SinglePSM]] | dict[str, list[SinglePSM]],
 ]:
-    print("---计算参数")
+    print("--- Computing parameters")
     with open(pkl, "rb") as f:
         dataset_dict = pickle.load(f)
 
@@ -163,7 +165,7 @@ def denoise_by_pkl(
         )
         psms.append(psm)
 
-    print("---加权计算")
+    print("--- Weighted computation")
     weights, single_psms = denoise(
         psms=psms,
         params=params,
@@ -198,9 +200,9 @@ if __name__ == "__main__":
         use_phase_tensor_angles=False,
     )
 
-    # 去噪前后 rho_phi 对比
+    # rho/phi comparison before and after processing
     plot_before_after_rho_phi(single_psms, psms, name=f"{pkl.stem} Denoised")
 
-    # 权重可视化
+    # Weight visualization
     plot_weights_heatmap(weights, title=f"{pkl.stem} — Weight Heatmap")
     plot_weight_curve(weights, title=f"{pkl.stem} — Weight vs Frequency")

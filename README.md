@@ -1,106 +1,105 @@
 # FAW-Net: A Physics-Guided Frequency-Adaptive Weighting Network for Magnetotelluric Impedance Estimation
 
-深度学习驱动的大地电磁（Magnetotelluric, MT）功率谱智能加权处理框架。
+Deep learning framework for intelligent spectral-segment weighting and processing of magnetotelluric (MT) data.
 
-本仓库实现了论文中的核心模型 **FreqAdaptWeighter（FAW-Net）**：对同一测站、同一频点下的多个功率谱段进行自适应加权，抑制噪声段、保留可靠段，从而得到更稳健的阻抗与视电阻率/相位响应。
+This repository implements **FreqAdaptWeighter (FAW-Net)** from the paper: it adaptively re-weights multiple power-spectrum segments at each station and frequency, suppressing contaminated segments while retaining reliable ones, and yields more stable impedance and apparent-resistivity / phase responses.
 
 ---
 
-## 方法概览
+## Method Overview
 
-传统 Robust 估计或手工规则选谱依赖固定统计量，在强人文噪声、非平稳干扰下往往不够灵活。FAW-Net 将「谱段加权」建模为一个频率自适应的序列建模问题：
+Conventional robust estimators or rule-based segment selection rely on fixed statistics and can be inflexible under strong anthropogenic noise and non-stationary interference. FAW-Net formulates spectral-segment weighting as a frequency-adaptive sequence modeling problem:
 
-1. **物理特征编码**：从 7×7 功率谱矩阵中提取阻抗、倾子、自功率谱、相位张量等多物理量，构成谱段特征。
-2. **频率内建模（CSA + FDC）**：
-   - **Cross-Segment Attention（CSA）**：同一频点内谱段间自注意力，捕捉段间一致性；
-   - **Frequency-conditioned Dynamic Conv1D（FDC）**：由频率生成卷积核，低频用更大感受野、高频保留细节。
-3. **跨频率建模（CFA）**：基于趋肤深度 $\delta \propto \sqrt{\rho/f}$ 构造物理偏置注意力，让相邻频率互相「作证」，识别局部异常。
-4. **门控融合与权重输出**：FusionGate 自适应融合段级局部特征与频率级全局特征，经温度化 Softmax 输出每个频点各谱段的归一化权重。
-5. **物理约束多任务损失**：
-   - MSE 监督（相对目标阻抗响应）；
-   - 对数频率域二阶连续性约束；
-   - 权重极化/稀疏单边约束（防止 one-hot 崩塌）；
-   - 因果性约束。
+1. **Physical feature encoding**: extract impedance, tipper, auto-power spectra, phase tensor, and related quantities from the 7×7 power-spectrum matrix as segment features.
+2. **Intra-frequency modeling (CSA + FDC)**:
+   - **Cross-Segment Attention (CSA)**: self-attention among segments at the same frequency to capture inter-segment consistency;
+   - **Frequency-conditioned Dynamic Conv1D (FDC)**: convolution kernels generated from frequency—larger receptive fields at low frequencies, finer detail at high frequencies.
+3. **Cross-frequency modeling (CFA)**: physics-biased attention based on skin depth $\delta \propto \sqrt{\rho/f}$, so neighboring frequencies can mutually corroborate responses and identify local anomalies.
+4. **Gated fusion and weight output**: FusionGate adaptively fuses segment-level local features with frequency-level global features; a temperature-scaled Softmax produces normalized segment weights at each frequency.
+5. **Physics-constrained multi-task loss**:
+   - MSE supervision against target impedance responses;
+   - second-order continuity in the log-frequency domain;
+   - one-sided polarization / sparsity constraint on weights (prevents one-hot collapse);
+   - causality (Kramers–Kronig) constraint.
 
-加权后的功率谱矩阵经最小二乘重新求阻抗，得到处理后的 $\rho_{xy}/\rho_{yx}$、$\phi_{xy}/\phi_{yx}$ 等响应。
+The weighted power-spectrum matrix is then re-inverted by least squares to obtain processed $\rho_{xy}/\rho_{yx}$ and $\phi_{xy}/\phi_{yx}$ responses.
 
-## 示例结果
+## Example
 
-交互式查看器（`viewer.py`）界面：左侧为处理前后 $\rho/\phi$ 曲线，右侧为当前频点上的谱段权重散点：
+Interactive viewer (`viewer.py`): processed-vs-raw $\rho/\phi$ curves on the left, and spectral-segment weight scatter at the selected frequency on the right:
 
 ![FAW-Net Viewer](docs/assets/viewer_fig.png)
 
 ---
 
-## 仓库结构
+## Repository Layout
 
 ```text
-src_2_github/
-├── model.py              # FreqAdaptWeighter 及各子模块（CSA / FDC / CFT / FusionGate）
-├── loss.py               # 多任务物理约束损失
-├── struct.py             # 功率谱矩阵、阻抗、相位张量等数据结构与计算
-├── param.py              # 多参数特征提取与特征选择（30 维可裁剪）
-├── t_calc.py             # PyTorch 版阻抗 / 视电阻率 / 相位计算
-├── cdataset.py           # Dataset、特征筛选、训练/验证划分
-├── trainer.py            # 训练循环、权重保存、粗糙度监控
-├── denoise.py            # 推理与批量处理入口
-├── visualization.py      # 权重、阻抗、处理前后对比等可视化
-├── viewer.py             # PySide6 交互式结果查看器（可选）
-├── main_run_train.py     # 训练示例入口
-├── test_load_pkl.py      # 数据格式检查脚本
-├── requirements.txt      # Python 依赖
-├── best_model.pth        # 论文训练得到的最优模型权重
-├── docs/assets/          # README 示例图
-└── pkl/                  # 部分示例测站数据（非完整训练集）
+FAW-Net/
+├── model.py              # FreqAdaptWeighter and submodules (CSA / FDC / CFT / FusionGate)
+├── loss.py               # Multi-task physics-constrained loss
+├── struct.py             # Power-spectrum matrix, impedance, phase tensor, etc.
+├── param.py              # Multi-parameter feature extraction / selection (up to 30-D)
+├── t_calc.py             # PyTorch impedance / resistivity / phase calculations
+├── cdataset.py           # Dataset, feature selection, train/val split
+├── trainer.py            # Training loop, weight saving, roughness monitoring
+├── denoise.py            # Inference and batch processing entry points
+├── visualization.py      # Weight, impedance, and before/after plots
+├── viewer.py             # Optional PySide6 interactive viewer
+├── main_run_train.py     # Training example entry
+├── test_load_pkl.py      # Data-format check script
+├── requirements.txt      # Python dependencies
+├── best_model.pth        # Final model parameters from the paper experiments
+├── docs/assets/          # README figures
+└── pkl/                  # Sample station data (subset of the full training corpus)
 ```
 
 ---
 
-## 数据与训练结果模型说明
+## Data and Trained Model
 
-本仓库**有意只公开部分测站的示例数据**，并附带**论文训练过程得到的最优模型权重** `best_model.pth`。原因如下：
+This repository **intentionally releases only a subset of station examples**, together with the **final trained model parameters** `best_model.pth` from the paper. Reasons:
 
-1. **完整野外数据体量过大**  
-   论文训练与评估使用了更大规模的实测 MT 时间序列衍生功率谱数据集；全部站点的 7×7 功率谱段文件体积很大，直接全部放入代码仓库并不合适，也会显著增加获取门槛。
+1. **Full field data are too large**  
+   Training and evaluation used a larger corpus of field MT time-series–derived power-spectrum files. Bundling every 7×7 spectral-segment file in a code repository is impractical and raises the barrier to access.
 
-2. **部分数据受采集与使用协议约束**  
-   完整数据集中包含多期野外采集项目与合作单位提供的测站资料，其再分发需遵守相应数据使用约定。在获得完整公开许可之前，本仓库仅提供用于代码验证与结果复现演示的**代表性子集**。
+2. **Some data are subject to acquisition and use agreements**  
+   The complete corpus includes multi-campaign field records and partner-provided stations whose redistribution must follow the corresponding data-use terms. Until full public release is cleared, this repository only provides a **representative subset** for code verification and demonstration.
 
-3. **优先保证方法可验证、结果可对照**  
-   `best_model.pth` 保存的是论文实验训练结束后得到的最终模型参数。读者无需重新训练即可在公开示例站点上复现推理流程：加载权重 → 谱段加权 → 重估阻抗 → 对比处理前后视电阻率/相位曲线。这与论文中报告的指标对照路径一致，便于审稿人与后续研究独立核查。
+3. **Prioritize method verification and result comparison**  
+   `best_model.pth` stores the final parameters obtained after training in the paper experiments. Readers can reproduce the inference pipeline on the public sample stations without retraining: load weights → re-weight spectral segments → re-estimate impedance → compare before/after apparent-resistivity and phase curves. This matches the evaluation path reported in the paper and facilitates independent review.
 
-4. **训练代码仍完整开放**  
-   `main_run_train.py`、`cdataset.py`、`loss.py`、`trainer.py` 与模型实现一并公开。研究者可按下一节的数据格式，用自有或公开 MT 数据集自行训练与微调。
+4. **Training code remains fully open**  
+   `main_run_train.py`, `cdataset.py`, `loss.py`, `trainer.py`, and the model implementation are released. Researchers can train or fine-tune on their own or public MT datasets following the data format below.
 
-### 本仓库包含什么
+### What is included
 
-| 内容                      | 状态             | 用途                   |
-| ------------------------- | ---------------- | ---------------------- |
-| 模型、损失、训练/推理代码 | 完整公开         | 复现方法与二次开发     |
-| `best_model.pth`          | 论文训练最优权重 | 直接推理与结果对照     |
-| `pkl/` 示例测站           | **部分子集**     | 流程验证、可视化与演示 |
-| 完整训练/测试全集         | 未随仓库分发     | 见下方说明             |
+| Content | Status | Purpose |
+|---------|--------|---------|
+| Model, loss, train/inference code | Fully open | Reproduction and secondary development |
+| `best_model.pth` | Final trained parameters | Direct inference and comparison |
+| `pkl/` sample stations | **Subset** | Pipeline checks, visualization, demos |
+| Full train/test corpus | Not redistributed | See notes below |
 
-### 如何获取或扩展数据
+### How to obtain or extend data
 
-- **复现推理结果**：直接使用仓库内 `pkl/` 与 `best_model.pth` 即可。
-- **自行训练**：按 [数据格式](#数据格式) 将自有测站整理为同结构 `.pkl`，放入 `pkl/` 目录后运行 `main_run_train.py`。
-- **完整实验数据**：若因论文复现或对比实验需要完整数据集，请通过论文通讯作者邮箱联系（见文末），在符合数据使用条件的前提下协商获取。
+- **Reproduce inference**: use the in-repo `pkl/` samples and `best_model.pth`.
+- **Train yourself**: convert your stations to the documented `.pkl` format, place them under `pkl/`, and run `main_run_train.py`.
+- **Full experimental data**: for paper reproduction or comparison, contact the corresponding author (see below) under applicable data-use terms.
 
-> **说明**：公开示例站点已覆盖与论文相同的特征工程与加权推理路径；因训练集规模不同，用本仓库子集从零训练得到的模型精度**不能**直接等同于论文中的 `best_model.pth`。
+> **Note**: the public sample stations exercise the same feature engineering and weighting-inference path as the paper. Because the training-set scale differs, a model trained from scratch only on this subset **cannot** be expected to match `best_model.pth`.
 
 ---
 
-## 环境依赖
+## Installation
 
-- Python ≥ 3.10（开发环境为 3.12）
-- 安装：
+- Python ≥ 3.10 (developed with 3.12)
 
 ```bash
 pip install -r requirements.txt
 ```
 
-主要依赖：
+Main dependencies:
 
 ```text
 torch
@@ -108,48 +107,48 @@ numpy
 matplotlib
 scienceplots
 tqdm
-# 可选：交互式查看器
+# optional interactive viewer
 PySide6
 pyqtgraph
 ```
 
-> 说明：`torch` 请按本机 CUDA/CPU 环境选择官方安装方式；仓库内示例模型 `best_model.pth` 用 PyTorch 保存，`map_location="cpu"` 即可在无 GPU 环境加载。
+> Install `torch` according to your CUDA/CPU setup. `best_model.pth` is a PyTorch checkpoint and can be loaded with `map_location="cpu"` on machines without a GPU.
 >
-> 若从完整研究工程中拆出本目录，部分脚本原先通过包内相对导入（`from .xxx import ...`）运行；将本目录作为包使用，或把相对导入改为同目录绝对导入即可。
+> Some scripts were originally written with package-relative imports (`from .xxx import ...`). Use this directory as a package, or switch to same-directory absolute imports.
 
 ---
 
-## 数据格式
+## Data Format
 
-每个测站对应一个 `.pkl` 文件，内容为 `dict`：
+Each station is one `.pkl` file containing a `dict`:
 
-| 字段     | 含义           | 形状 / 类型                                     |
-| -------- | -------------- | ----------------------------------------------- |
-| `target` | 目标响应       | `dict[float, array(4)]`：`(ρxy, φxy, ρyx, φyx)` |
-| `matrix` | 各频点功率谱段 | `dict[float, Tensor(N, 7, 7)]`                  |
-| `param`  | 各频点谱段特征 | `dict[float, array(N, F)]`，默认可到 30 维      |
+| Field | Meaning | Shape / type |
+|-------|---------|--------------|
+| `target` | Target response | `dict[float, array(4)]`: `(ρxy, φxy, ρyx, φyx)` |
+| `matrix` | Spectral segments per frequency | `dict[float, Tensor(N, 7, 7)]` |
+| `param` | Segment features per frequency | `dict[float, array(N, F)]`, up to 30-D |
 
-其中 `N` 为该频点的谱段数（不同频点可以不等长，例如 500 / 100 / 20）。
+`N` is the number of segments at that frequency (may differ across frequencies, e.g. 500 / 100 / 20).
 
-可运行以下脚本快速检查：
+Quick check:
 
 ```bash
 python test_load_pkl.py
 ```
 
-### 特征维度开关（默认实验配置）
+### Feature switches (default experiment setting)
 
-完整 30 维特征由 `param.Params.to_features()` 生成，可按物理模块裁剪：
+The full 30-D features are built by `param.Params.to_features()` and can be subset by physical module:
 
-| 模块                                     | 维数 | 索引  |
-| ---------------------------------------- | ---- | ----- |
-| 阻抗张量 Zxx/Zyy/Zxy/Zyx（幅值+sin/cos） | 12   | 0–11  |
-| 倾子 Tzx/Tzy                             | 6    | 12–17 |
-| 功率谱密度 Ex/Ey/Hx/Hy                   | 4    | 18–21 |
-| 相位张量角度 α/β                         | 4    | 22–25 |
-| 相位张量主值 P11/P12/P21/P22             | 4    | 26–29 |
+| Module | Dim | Indices |
+|--------|-----|---------|
+| Impedance Zxx/Zyy/Zxy/Zyx (amp + sin/cos) | 12 | 0–11 |
+| Tipper Tzx/Tzy | 6 | 12–17 |
+| Power spectral density Ex/Ey/Hx/Hy | 4 | 18–21 |
+| Phase tensor angles α/β | 4 | 22–25 |
+| Phase tensor elements P11/P12/P21/P22 | 4 | 26–29 |
 
-论文默认设置（与 `best_model.pth` 一致）：
+Default settings (consistent with `best_model.pth`):
 
 ```python
 use_impedance=True
@@ -157,16 +156,16 @@ use_tipper=False
 use_psd=True
 use_phase_tensor_angles=False
 use_phase_tensor_main=True
-# → 实际输入 20 维
+# → 20-D input
 ```
 
 ---
 
-## 快速开始
+## Quick Start
 
-### 1. 使用论文训练结果模型进行推理
+### 1. Inference with the trained model
 
-`best_model.pth` 为论文训练得到的最优权重，可直接在仓库示例站点上复现推理流程（无需重新训练）：
+`best_model.pth` is the final trained model from the paper and can be applied to the sample stations without retraining:
 
 ```python
 from pathlib import Path
@@ -197,9 +196,9 @@ plot_weights_heatmap(weights, title=f"{pkl.stem} — Weight Heatmap")
 plot_weight_curve(weights, title=f"{pkl.stem} — Weight vs Frequency")
 ```
 
-### 2. 训练（代码流程演示）
+### 2. Training (pipeline demo)
 
-参考 `main_run_train.py`。仓库内 `pkl/` 仅为部分示例站点，**完整复现论文训练请按上文说明准备全量数据**；下列配置与论文实验一致，便于理解训练管线：
+See `main_run_train.py`. The bundled `pkl/` files are a **subset**; prepare the full corpus as described above to reproduce paper training. The configuration below matches the paper experiments:
 
 ```python
 from pathlib import Path
@@ -247,52 +246,92 @@ trainer = Trainer(
 trainer.run(train_loader=train_loader, epochs=epochs, val_loader=val_loader)
 ```
 
-### 3. 交互式查看器
+### 3. Interactive viewer
 
 ```bash
 python viewer.py
 ```
 
-可在 GUI 中浏览测站、频点、权重散点与处理前后 $\rho/\phi$ 曲线。
+Browse stations and frequencies, inspect weight scatter plots, and compare raw vs processed $\rho/\phi$ curves in the GUI.
 
 ---
 
-## 模型超参数
+## Model Hyperparameters
 
-`FreqAdaptWeighter` 默认配置（经 Optuna 搜索）：
+Default `FreqAdaptWeighter` configuration (via Optuna search):
 
-| 参数               | 默认值 | 说明             |
-| ------------------ | ------ | ---------------- |
-| `n_features`       | 20     | 输入特征维度     |
-| `d_model`          | 64     | 隐层维度         |
-| `n_heads`          | 8      | 注意力头数       |
-| `n_freq_neighbors` | 4      | CFA 每频点邻居数 |
-| `dropout`          | 0.07   | Dropout          |
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `n_features` | 20 | Input feature dimension |
+| `d_model` | 64 | Hidden dimension |
+| `n_heads` | 8 | Attention heads |
+| `n_freq_neighbors` | 4 | CFA neighbors per frequency |
+| `dropout` | 0.07 | Dropout rate |
 
-损失默认权重：
+Default loss weights:
 
-| 系数            | 默认值 | 对应项                |
-| --------------- | ------ | --------------------- |
-| `lambda_sup`    | 1.0    | MSE 监督              |
-| `lambda_smooth` | 0.01   | 二阶连续性            |
-| `lambda_polar`  | 0.5    | 权重极化约束          |
-| `lambda_kk`     | 0.1    | Kramers–Kronig 因果性 |
+| Coefficient | Default | Term |
+|-------------|---------|------|
+| `lambda_sup` | 1.0 | MSE supervision |
+| `lambda_smooth` | 0.01 | Second-order continuity |
+| `lambda_polar` | 0.5 | Weight polarization constraint |
+| `lambda_kk` | 0.1 | Kramers–Kronig causality |
 
 ---
 
-## 可视化能力
+## Visualization
 
-`visualization.py` 提供：
+`visualization.py` provides:
 
-- `plot_single_freq_weights`：单频点权重分布
-- `plot_single_freq_impedance`：单频点阻抗幅值/相位
-- `plot_single_freq_features`：按权重排序的输入特征
-- `plot_weights_heatmap` / `plot_weight_curve`：全频点权重热图与曲线
-- `plot_before_after_rho_phi`：处理前后 $\rho/\phi$ 对比
-- `plot_denoise_dashboard`：单频点或全频点综合面板
+- `plot_single_freq_weights`: weight distribution at a single frequency
+- `plot_single_freq_impedance`: impedance amplitude / phase at a single frequency
+- `plot_single_freq_features`: input features sorted by weight
+- `plot_weights_heatmap` / `plot_weight_curve`: weight heatmap and curve over all frequencies
+- `plot_before_after_rho_phi`: raw vs processed $\rho/\phi$
+- `plot_denoise_dashboard`: single-frequency or all-frequency dashboard
 
 ---
 
 ## Data Availability
 
 Due to the large volume of field MT records and restrictions associated with multi-campaign field acquisition, the complete training corpus is not redistributed with this repository. A representative subset of station-level spectral files (`pkl/`) is provided for code verification, together with the final trained model parameters (`best_model.pth`) obtained in the paper experiments. Researchers may retrain the model on their own datasets following the documented format, or contact the corresponding author for access under applicable data-use terms.
+
+---
+
+## Citation
+
+If this code is useful for your research, please cite the paper (update fields as needed after publication):
+
+```bibtex
+@article{wang202xfawnet,
+  title   = {FAW-Net: A Physics-Guided Frequency-Adaptive Weighting Network for Magnetotelluric Impedance Estimation},
+  author  = {Wang, Peijie and Coauthors},
+  journal = {IEEE Transactions on Geoscience and Remote Sensing},
+  year    = {202X},
+  note    = {Code: https://github.com/TySpark/FAW-Net}
+}
+```
+
+---
+
+## Acknowledgments
+
+- Phase tensor calculations follow Caldwell, T. G., et al. (2004).
+- Thanks to colleagues involved in field acquisition and preprocessing for the MT time series and power-spectrum data.
+
+---
+
+## License
+
+This repository is released under the MIT License (see `LICENSE`).
+
+---
+
+## Contact
+
+Wang Peijie  
+Key Laboratory of Exploration Technologies for Oil and Gas Resources  
+Yangtze University, Wuhan 430100, China  
+Email: wangpj@yangtzeu.edu.cn
+
+Please open a GitHub Issue or email the corresponding author for questions and collaboration.

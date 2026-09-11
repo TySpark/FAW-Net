@@ -18,7 +18,7 @@ def load_site_data(pkl_path: Path):
 
 
 # ==========================================
-# 1. 动态特征筛选生成器
+# 1. Dynamic feature-selection generator
 # ==========================================
 def create_feature_selector(
     use_impedance: bool,
@@ -28,10 +28,10 @@ def create_feature_selector(
     use_phase_tensor_main: bool,
 ) -> Callable[[torch.Tensor], torch.Tensor]:
     """
-    根据物理模块开关，生成一个裁剪特征的函数。
-    返回的函数接收 (n, 30) 的 Tensor，返回 (n, selected_dim) 的 Tensor。
+    Build a feature-slicing function controlled by physical-module switches.
+    The returned function takes an (n, 30) Tensor and returns an (n, selected_dim) Tensor.
     """
-    # 按照你的 to_deal_two 方法的特征拼装顺序
+    # Follow the feature-assembly order of the to_deal_two method
     indices = []
 
     if use_impedance:
@@ -45,11 +45,11 @@ def create_feature_selector(
     if use_phase_tensor_main:
         indices.extend(range(26, 30))  # P11, P12, P21, P22
 
-    # 转为 tensor 索引，避免在 forward 里反复创建
+    # Convert to a tensor index to avoid recreating it inside forward
     idx_tensor = torch.tensor(indices, dtype=torch.long)
 
     def selector(x: torch.Tensor) -> torch.Tensor:
-        # 将 idx_tensor 放到与数据相同的设备上再切片
+        # Move idx_tensor to the same device as the data before slicing
         return x[:, idx_tensor.to(x.device)]
 
     return selector
@@ -67,15 +67,15 @@ class CustomDataset(Dataset):
         pre_deal_feature: Optional[Callable[[torch.Tensor], torch.Tensor]] = None,
     ):
         """
-        初始化 Dataset
-        :param data_dir: 存放所有 pkl 数据集的目录
-        :param max_num: 限制使用的数据集最大数量，用于部分测试
-        :param min_freq: 最小频率，用于过滤数据集
-        :param device: 设备，默认为 None，自动选择
-        :param pre_deal_feature: 预处理特征的函数，输入为 torch.Tensor，输出为 torch.Tensor
+        Initialize the Dataset
+        :param data_dir: directory containing all pkl datasets
+        :param max_num: limit on the maximum number of datasets used, for partial testing
+        :param min_freq: minimum frequency used to filter datasets
+        :param device: device; default None selects automatically
+        :param pre_deal_feature: feature-preprocessing function; takes a torch.Tensor and returns a torch.Tensor
         """
         self.data_dir = Path(data_dir)
-        # 获取目录下所有的 pkl 文件路径
+        # Collect all pkl file paths under the directory
         self.pkl_files = list(self.data_dir.glob("*.pkl"))
 
         if max_num is not None:
@@ -84,7 +84,7 @@ class CustomDataset(Dataset):
         self.min_freq = min_freq
 
         if len(self.pkl_files) == 0:
-            raise ValueError(f"在目录 {self.data_dir} 中没有找到任何 .pkl 文件！")
+            raise ValueError(f"No .pkl files found in directory {self.data_dir}!")
 
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -96,18 +96,19 @@ class CustomDataset(Dataset):
         self.pre_deal_feature = pre_deal_feature
 
     def __len__(self):
-        # 数据集的长度就是站点的数量（pkl文件的数量）
+        # Dataset length equals the number of sites (number of pkl files)
         return len(self.pkl_files)
 
     def __getitem__(self, idx: int) -> dict:  # type: ignore
         """
-        获取一个站点的所有数据。
-        为了配合神经网络和你的 MTLoss，这里直接将 numpy 数组转换为 PyTorch Tensor。
+        Get all data for one site.
+        To interface with the neural network and MTLoss, numpy arrays are converted
+        directly to PyTorch Tensors.
         """
         pkl_path = self.pkl_files[idx]
         targets, matrixs, params = load_site_data(pkl_path)
 
-        # 将字典中的值转换为 Tensor
+        # Convert dictionary values to Tensors
         tensor_targets = {}
         tensor_matrixs = {}
         tensor_params = {}
@@ -116,25 +117,25 @@ class CustomDataset(Dataset):
             if self.min_freq is not None and freq < self.min_freq:
                 continue
 
-            # target: (rxy, pxy, ryx, pyx) -> 形状 (4,) 的 float64 tensor
+            # target: (rxy, pxy, ryx, pyx) → float64 tensor of shape (4,)
             tensor_targets[freq] = torch.tensor(
                 targets[freq], dtype=self.dtype, device=self.device
             )
 
-            # matrix: 功率谱矩阵 -> 形状 (N, 7, 7) 的 float64 tensor
+            # matrix: power spectral matrix → float64 tensor of shape (N, 7, 7)
             tensor_matrixs[freq] = torch.tensor(
                 matrixs[freq], dtype=self.dtype, device=self.device
             )
 
-            # params: 输入数据 -> 形状为（N, features）的 float64 tensor
-            # 转换为 PyTorch Tensor 并存储
+            # params: input data → float64 tensor of shape (N, features)
+            # Convert to a PyTorch Tensor and store
             feature = torch.tensor(params[freq], dtype=self.dtype, device=self.device)
             if self.pre_deal_feature is not None:
                 feature = self.pre_deal_feature(feature)
             tensor_params[freq] = feature
 
         return {
-            "site_name": pkl_path.stem,  # 记录一下站点名字方便调试
+            "site_name": pkl_path.stem,  # keep the site name for debugging
             "target": tensor_targets,  # {freq: Tensor(4,)}
             "matrix": tensor_matrixs,  # {freq: Tensor(N, 7, 7)}
             "param": tensor_params,  # {freq: Tensor(N, channels)}
@@ -144,9 +145,9 @@ class CustomDataset(Dataset):
 # ====================== Collate Function ======================
 def site_collate_fn(batch):
     """
-    因为每个站点的数据是包含了多个不同长度 tensor 的字典，
-    PyTorch 默认的 default_collate 无法处理。
-    我们直接返回这个 batch（一个包含字典的列表）即可，在 train 循环中去遍历它。
+    Each site's data is a dict of multiple tensors of different lengths, so
+    PyTorch's default_collate cannot handle it.
+    Return the batch as-is (a list of dicts) and iterate over it in the training loop.
     """
     return batch
 
@@ -159,7 +160,7 @@ def split_dataset(
     shuffle: bool = True,
 ) -> tuple[DataLoader, DataLoader]:
     """
-    将数据集按比例切分为训练集和验证集。
+    Split the dataset into training and validation sets by ratio.
     """
     total_size = len(dataset)  # type: ignore
     val_size = int(total_size * val_ratio)
@@ -189,7 +190,7 @@ def split_dataset(
     return train_loader, val_loader
 
 
-# ====================== 测试代码 ======================
+# ====================== Test code ======================
 
 
 def loader_dataset(
@@ -204,29 +205,29 @@ def loader_dataset(
 
 
 if __name__ == "__main__":
-    # 假设你的 pkl 文件保存在这个目录
+    # Assume the pkl files are saved in this directory
     test_dir = Path(r"F:\MainMission\DLSpec\temp_data")
 
-    # 1. 实例化 Dataset
+    # 1. Instantiate the Dataset
     dataset = CustomDataset(test_dir)
-    print(f"总共找到 {len(dataset)} 个站点数据。")
+    print(f"Found {len(dataset)} site datasets in total.")
 
-    # 2. 测试读取第 0 个样本
+    # 2. Test reading sample 0
     sample = dataset[0]
-    print(f"成功读取站点: {sample['site_name']}")
+    print(f"Successfully loaded site: {sample['site_name']}")
 
-    # 取一个频率看看形状
+    # Inspect shapes at one frequency
     test_freq = list(sample["target"].keys())[0]
-    print(f"频率 {test_freq} Hz 的 Target 形状: {sample['target'][test_freq].shape}")
-    print(f"频率 {test_freq} Hz 的 Matrix 形状: {sample['matrix'][test_freq].shape}")
-    print(f"频率 {test_freq} Hz 的 Param  形状: {sample['param'][test_freq].shape}")
+    print(f"Target shape at {test_freq} Hz: {sample['target'][test_freq].shape}")
+    print(f"Matrix shape at {test_freq} Hz: {sample['matrix'][test_freq].shape}")
+    print(f"Param  shape at {test_freq} Hz: {sample['param'][test_freq].shape}")
 
-    # 3. 构建 DataLoader
-    # 注意：batch_size 可以大于 1，但必须使用自定义的 site_collate_fn
+    # 3. Build the DataLoader
+    # Note: batch_size may be greater than 1, but the custom site_collate_fn must be used
     train_loader, val_loader = split_dataset(
         dataset, batch_size=2, val_ratio=0.0, seed=42, shuffle=True
     )
 
     for batch_idx, batch in enumerate(train_loader):
-        print(f"Batch {batch_idx}: 包含 {len(batch)} 个站点。")
+        print(f"Batch {batch_idx}: contains {len(batch)} sites.")
         break

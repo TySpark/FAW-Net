@@ -10,7 +10,7 @@ from .model import FreqAdaptWeighter
 from .trainer import Trainer
 
 if __name__ == "__main__":
-    # 1. 基础配置
+    # 1. Basic configuration
     devices = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     epochs = 10
     batch_size = 4
@@ -30,9 +30,9 @@ if __name__ == "__main__":
 
     dummy_input = torch.zeros((1, 30))
     actual_feature_dim = pre_deal_feature(dummy_input).shape[1]
-    print(f"实际特征维度: {actual_feature_dim}")
+    print(f"Actual feature dimension: {actual_feature_dim}")
 
-    # 2. 准备数据
+    # 2. Prepare data
     dataset = CustomDataset(
         data_dir=data_dir,
         max_num=100,
@@ -42,15 +42,15 @@ if __name__ == "__main__":
 
     train_loader, val_loader = split_dataset(dataset, batch_size=4)
 
-    # 3. 初始化模型与损失
+    # 3. Initialize model and loss
     model = FreqAdaptWeighter(n_features=actual_feature_dim).to(devices)
     criterion = Loss().to(devices)
 
-    # 4. 初始化优化器与调度器
+    # 4. Initialize optimizer and scheduler
     optimizer = optim.AdamW(model.parameters(), lr=max_lr, weight_decay=weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=epochs, eta_min=min_lr)
 
-    # 5. 实例化并运行 Trainer
+    # 5. Instantiate and run the Trainer
     trainer = Trainer(
         model=model,
         criterion=criterion,

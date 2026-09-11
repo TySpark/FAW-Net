@@ -7,9 +7,9 @@ def main() -> None:
     with open(pkl_file, "rb") as f:
         data = pkl.load(f)
         # Keys - ['target', 'matrix', 'param']
-        # target: dict[float, (rxy, pxy, ryx, pyx)] -> 形状 (4,) 的 float64 tensor
-        # matrix: 功率谱矩阵 -> 形状 dict[float, (N, 7, 7)] 的 float64 tensor
-        # params: 输入数据 -> 形状 dict[float, (N, features)] 的 float64 tensor
+        # target: dict[float, (rxy, pxy, ryx, pyx)] -> float64 tensor of shape (4,)
+        # matrix: power-spectrum matrices -> float64 tensor of shape dict[float, (N, 7, 7)]
+        # params: input features -> float64 tensor of shape dict[float, (N, features)]
         print(list(data.keys()))
         frequencies = list(data["target"].keys())
         print(f"target - {len(data['target'])}")

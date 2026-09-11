@@ -29,16 +29,19 @@ class Trainer:
         self.device = device
         self.save_interval = save_interval
 
-        # 创建保存目录
+        # Create the save directory if needed
         self.save_dir = save_dir
         if self.save_dir is not None and not self.save_dir.exists():
-            print(f"创建保存文件夹：{self.save_dir}")
+            print(f"Creating save directory: {self.save_dir}")
             self.save_dir.mkdir(parents=True, exist_ok=True)
 
     def compute_cell_loss(self, site_data: dict) -> torch.Tensor:
         """
-        [可重写] 处理单个站点（或单个batch单元）的数据，进行前向传播并计算损失。
-        子类可以重写此方法以适应不同的模型输入输出结构、多任务损失等。
+        [Overridable] Process a single site (or batch unit): run a forward pass
+        and compute the loss.
+
+        Subclasses may override this method to support different model I/O
+        structures, multi-task losses, etc.
         """
         params_dict = site_data["param"]
         matrix_dict = site_data["matrix"]
@@ -83,7 +86,7 @@ class Trainer:
             matrix = matrix_dict[f]
             s_avg = torch.sum(weights * matrix, dim=0)
 
-            # MSE 监督目标
+            # MSE supervision target
             res = calc_rho_phs(f, s_avg, is_log=True)
             rxy, ryx, pxy, pyx = res.detach().cpu().numpy()
             rxys.append(rxy)
@@ -114,19 +117,19 @@ class Trainer:
             self.optimizer.zero_grad()
             batch_loss = torch.tensor(0.0, device=self.device)
 
-            # 调用抽离的计算单元
+            # Call the extracted compute unit
             for site_data in batch:
                 batch_loss += self.compute_cell_loss(site_data)
 
             batch_loss = batch_loss / len(batch)
             batch_loss.backward()
 
-            # 梯度裁剪防止爆炸
+            # Gradient clipping to prevent explosion
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), max_norm=1.0)
 
             self.optimizer.step()
 
-            # 记录并更新进度条信息
+            # Record and update progress-bar info
             current_loss = batch_loss.item()
             total_loss += current_loss
             avg_loss = total_loss / (batch_idx + 1)
@@ -156,7 +159,7 @@ class Trainer:
                 batch_loss = torch.tensor(0.0, device=self.device)
                 r_cell = 0.0
 
-                # 调用抽离的计算单元
+                # Call the extracted compute unit
                 for site_data in batch:
                     batch_loss += self.compute_cell_loss(site_data)
                     r_cell += self.compute_roughness(site_data)
@@ -164,7 +167,7 @@ class Trainer:
                 batch_loss = batch_loss / len(batch)
                 roughness += r_cell / len(batch)
 
-                # 记录并更新进度条信息
+                # Record and update progress-bar info
                 current_loss = batch_loss.item()
                 total_loss += current_loss
                 avg_loss = total_loss / (batch_idx + 1)
@@ -203,21 +206,21 @@ class Trainer:
             torch.save(checkpoint, best_path)
 
     def load_model(self, checkpoint_path: Path):
-        """加载模型状态字典"""
+        """Load the model state dict"""
         if not checkpoint_path.exists():
-            print(f"⚠️ 警告：找不到检查点文件 {checkpoint_path}，将从头开始训练。")
+            print(f"⚠️ Warning: checkpoint file not found at {checkpoint_path}; training will start from scratch.")
             return
-        print(f"🔄 正在加载模型：{checkpoint_path}")
+        print(f"🔄 Loading model: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
 
     def load_checkpoint(self, checkpoint_path: Path, only_model: bool = True):
-        """加载检查点，恢复模型、优化器和调度器状态，并返回下一个 epoch 的起始索引"""
+        """Load a checkpoint, restore model/optimizer/scheduler state, and return the next epoch start index"""
         if not checkpoint_path.exists():
-            print(f"⚠️ 警告：找不到检查点文件 {checkpoint_path}，将从头开始训练。")
+            print(f"⚠️ Warning: checkpoint file not found at {checkpoint_path}; training will start from scratch.")
             return
 
-        print(f"🔄 正在加载检查点：{checkpoint_path}")
+        print(f"🔄 Loading checkpoint: {checkpoint_path}")
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
 
         self.model.load_state_dict(checkpoint["model_state_dict"])
@@ -227,9 +230,9 @@ class Trainer:
             if self.scheduler is not None and "scheduler_state_dict" in checkpoint:
                 self.scheduler.load_state_dict(checkpoint["scheduler_state_dict"])
 
-        # checkpoint["epoch"] 是上次完成的 epoch 索引，所以下一个开始的 epoch 是 epoch + 1
+        # checkpoint["epoch"] is the last completed epoch index, so the next start epoch is epoch + 1
         start_epoch = checkpoint.get("epoch", -1) + 1
-        print(f"✅ 成功恢复状态，将从 Epoch {start_epoch + 1} 继续训练。")
+        print(f"✅ State restored successfully; training will continue from Epoch {start_epoch + 1}.")
         return start_epoch
 
     def save_history(self, history: dict):
@@ -240,7 +243,7 @@ class Trainer:
             json.dump(history, f, indent=4)
 
     def load_history(self) -> dict:
-        """读取历史训练记录，以便在画图时曲线是连续的"""
+        """Load previous training history so plotted curves stay continuous"""
         if self.save_dir is None:
             return {"train_loss": [], "val_loss": [], "roughness": [], "lr": []}
 
@@ -277,19 +280,19 @@ class Trainer:
         start_epoch = 0
         history = {"train_loss": [], "val_loss": [], "roughness": [], "lr": []}
 
-        # 如果提供了断点路径，则进行加载
+        # If a resume checkpoint path is provided, load it
         if resume_checkpoint is not None:
             start_epoch = self.load_checkpoint(resume_checkpoint, only_model=False)
             history = self.load_history()
 
-        print(f"🚀 在 {self.device} 上开始训练，计划总周期数：{epochs}...")
+        print(f"🚀 Starting training on {self.device}, planned total epochs: {epochs}...")
         if self.save_dir is not None:
             if save_checkpoint or save_history:
-                print(f"📁 检查点/记录将保存到：{self.save_dir.absolute()}")
+                print(f"📁 Checkpoints/history will be saved to: {self.save_dir.absolute()}")
         else:
-            print("📁 未设置保存目录路径")
+            print("📁 No save directory configured")
 
-        # 尝试从历史中恢复最佳损失
+        # Try to restore the best loss from history
         best_loss = float("inf")
         if history.get("val_loss"):
             best_loss = min(history["val_loss"])
@@ -298,7 +301,7 @@ class Trainer:
         elif history.get("roughness"):
             best_loss = min(history["roughness"])
 
-        # 从 start_epoch 开始循环
+        # Loop from start_epoch
         for epoch in range(start_epoch, epochs):
             current_lr = self.optimizer.param_groups[0]["lr"]
 
@@ -324,7 +327,7 @@ class Trainer:
             else:
                 best_msg = ""
 
-            # 受控保存
+            # Controlled saving
             if save_checkpoint:
                 self.save_checkpoint(epoch, is_best)
             if save_history:

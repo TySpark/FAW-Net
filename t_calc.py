@@ -5,24 +5,24 @@ import torch
 
 class Component(IntEnum):
     """
-    电磁场分量枚举
+    Electromagnetic field component enumeration
 
-    定义大地电磁测量中的七个场分量：
-    - 磁场分量: Hx, Hy, Hz
-    - 电场分量: Ex, Ey
-    - 远程参考: Rx, Ry
+    Defines the seven field components used in magnetotelluric measurements:
+    - Magnetic field: Hx, Hy, Hz
+    - Electric field: Ex, Ey
+    - Remote reference: Rx, Ry
 
-    标准7x7功率谱矩阵的索引顺序：
+    Index order of the standard 7x7 power spectral matrix:
     0:Hx, 1:Hy, 2:Hz, 3:Ex, 4:Ey, 5:Rx, 6:Ry
 
     Attributes:
-        Hx: 磁场X分量 (索引 0)
-        Hy: 磁场Y分量 (索引 1)
-        Hz: 磁场Z分量 (索引 2)
-        Ex: 电场X分量 (索引 3)
-        Ey: 电场Y分量 (索引 4)
-        Rx: 远程参考X分量 (索引 5)
-        Ry: 远程参考Y分量 (索引 6)
+        Hx: magnetic field X component (index 0)
+        Hy: magnetic field Y component (index 1)
+        Hz: magnetic field Z component (index 2)
+        Ex: electric field X component (index 3)
+        Ey: electric field Y component (index 4)
+        Rx: remote reference X component (index 5)
+        Ry: remote reference Y component (index 6)
     """
 
     Hx = 0
@@ -36,13 +36,13 @@ class Component(IntEnum):
 
 def get_complex_at(matrix: torch.Tensor, row: Component, col: Component):
     """
-    从解包后的矩阵中获取复数元素 S(r, c)
-    matrix: (7, 7) 这里的输入应是加权后的实数矩阵
+    Retrieve the complex element S(r, c) from an unpacked matrix
+    matrix: (7, 7); the input here should be a weighted real-valued matrix
     """
-    # 遵循你之前的 at() 逻辑：
-    # 对角线：实数
-    # 下三角 (r > c)：实部
-    # 上三角 (r < c)：-虚部
+    # Follow the same logic as the previous at() method:
+    # Diagonal: real
+    # Lower triangle (r > c): real part
+    # Upper triangle (r < c): -imaginary part
     r = row.value
     c = col.value
     if r == c:
@@ -59,10 +59,10 @@ def get_complex_at(matrix: torch.Tensor, row: Component, col: Component):
 
 def calc_zxy_zyx(matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    计算 ZXY 和 ZYX 分量
-    matrix: (7, 7) 这里的输入应是加权后的实数矩阵
+    Compute the ZXY and ZYX components
+    matrix: (7, 7); the input here should be a weighted real-valued matrix
     """
-    # 2. 提取分量并计算 Z
+    # 2. Extract components and compute Z
     s_hxrx = get_complex_at(matrix, Component.Hx, Component.Rx)
     s_hyry = get_complex_at(matrix, Component.Hy, Component.Ry)
     s_hxry = get_complex_at(matrix, Component.Hx, Component.Ry)
@@ -82,8 +82,8 @@ def calc_zxy_zyx(matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 def calc_zxx_zyy(matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     """
-    计算 ZXX 和 ZYY 分量
-    matrix: (7, 7) 这里的输入应是加权后的实数矩阵
+    Compute the ZXX and ZYY components
+    matrix: (7, 7); the input here should be a weighted real-valued matrix
     """
     s_hxrx = get_complex_at(matrix, Component.Hx, Component.Rx)
     s_hyry = get_complex_at(matrix, Component.Hy, Component.Ry)
@@ -103,8 +103,8 @@ def calc_zxx_zyy(matrix: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
 
 
 def calc_log10(rho):
-    # 取对数提高训练稳定性
-    # 将 rho 限制在最小为一个极小值（比如 1e-8），防止对 0 或负数取对数
+    # Take the log for training stability
+    # Clamp rho to a minimum tiny value (e.g. 1e-8) to avoid log of zero or negative numbers
     return torch.log10(torch.clamp(rho, min=1e-10))
 
 
@@ -112,9 +112,9 @@ def calc_rho_phs(
     freq: float, matrix: torch.Tensor, is_log: bool = True
 ) -> torch.Tensor:
     """
-    计算 rho 和 phi 分量
-    matrix: (7, 7) 这里的输入应是加权后的实数矩阵
-    return rxy(是否对数), ryx, pxy, pyx(弧度)
+    Compute the rho and phi components
+    matrix: (7, 7); the input here should be a weighted real-valued matrix
+    return rxy (log or not), ryx, pxy, pyx (radians)
     """
     zxy, zyx = calc_zxy_zyx(matrix)
 

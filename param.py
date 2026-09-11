@@ -21,16 +21,16 @@ def robust_scaler(arr, is_log=False):
     median = np.median(valid, axis=0, keepdims=True)
     q75, q25 = np.percentile(valid, [75, 25], axis=0, keepdims=True)
     iqr = q75 - q25
-    # 防止除以 0：把过小的 iqr 替换为 1.0（或一个很小值）
+    # Prevent division by zero: replace a too-small IQR with 1.0 (or a tiny value)
     eps = 1e-8
     iqr_safe = np.where(np.abs(iqr) < eps, 1e-8, iqr)
     scaled = (valid - median) / iqr_safe
-    # 返回缩放后的有效数据
+    # Return the scaled valid data
     return scaled
 
 
 def _decompose_complex(z: NDArray[np.complex128], is_log: bool = True):
-    """将复数数组分解为 幅值(缩放后)、sin(相位)、cos(相位) 三个分量"""
+    """Decompose a complex array into scaled amplitude, sin(phase), and cos(phase) components"""
     amp = np.abs(z)
     amp_scaled = robust_scaler(amp, is_log=is_log)
     phs = np.angle(z)
@@ -40,19 +40,19 @@ def _decompose_complex(z: NDArray[np.complex128], is_log: bool = True):
 @dataclass
 class Params:
     """
-    多参数
+    Multi-parameter container
     """
 
-    zxx: NDArray[np.complex128] = field(default_factory=list)  # 阻抗
-    zyy: NDArray[np.complex128] = field(default_factory=list)  # 阻抗
-    zxy: NDArray[np.complex128] = field(default_factory=list)  # 阻抗
-    zyx: NDArray[np.complex128] = field(default_factory=list)  # 阻抗
-    tzx: NDArray[np.complex128] = field(default_factory=list)  # 倾子
-    tzy: NDArray[np.complex128] = field(default_factory=list)  # 倾子
-    ex: NDArray[np.float64] = field(default_factory=list)  # 自功率谱密度
-    ey: NDArray[np.float64] = field(default_factory=list)  # 自功率谱密度
-    hx: NDArray[np.float64] = field(default_factory=list)  # 自功率谱密度
-    hy: NDArray[np.float64] = field(default_factory=list)  # 自功率谱密度
+    zxx: NDArray[np.complex128] = field(default_factory=list)  # impedance
+    zyy: NDArray[np.complex128] = field(default_factory=list)  # impedance
+    zxy: NDArray[np.complex128] = field(default_factory=list)  # impedance
+    zyx: NDArray[np.complex128] = field(default_factory=list)  # impedance
+    tzx: NDArray[np.complex128] = field(default_factory=list)  # tipper
+    tzy: NDArray[np.complex128] = field(default_factory=list)  # tipper
+    ex: NDArray[np.float64] = field(default_factory=list)  # auto-power spectral density
+    ey: NDArray[np.float64] = field(default_factory=list)  # auto-power spectral density
+    hx: NDArray[np.float64] = field(default_factory=list)  # auto-power spectral density
+    hy: NDArray[np.float64] = field(default_factory=list)  # auto-power spectral density
 
     @classmethod
     def from_psms(cls, psm: PowerSpectrumMatrix) -> "Params":
@@ -112,36 +112,36 @@ class Params:
         use_phase_tensor_angles: bool = True,
         use_phase_tensor_main: bool = True,
     ) -> np.ndarray:
-        """添加了相位张量，支持按物理模块选择性输出特征
+        """Add phase-tensor features; support selective feature output by physical module
 
         Parameters
         ----------
-        use_impedance : 阻抗张量 (Zxx, Zyy, Zxy, Zyx) → 12 维
-        use_tipper : 倾子 (Tzx, Tzy) → 6 维
-        use_psd : 功率谱密度 (Ex, Ey, Hx, Hy) → 4 维
-        use_phase_tensor_angles : 相位张量角度 (Alpha, Beta) → 4 维
-        use_phase_tensor_main : 相位张量主值 (P11,P12,P21,P22) → 4 维
+        use_impedance : impedance tensor (Zxx, Zyy, Zxy, Zyx) → 12 dimensions
+        use_tipper : tipper (Tzx, Tzy) → 6 dimensions
+        use_psd : power spectral density (Ex, Ey, Hx, Hy) → 4 dimensions
+        use_phase_tensor_angles : phase tensor angles (Alpha, Beta) → 4 dimensions
+        use_phase_tensor_main : phase tensor principal values (P11,P12,P21,P22) → 4 dimensions
         """
         arrays_to_stack = []
 
-        # --- 阻抗张量 (12 维) ---
+        # --- Impedance tensor (12 dims) ---
         if use_impedance:
             for z in (self.zxx, self.zyy, self.zxy, self.zyx):
                 amp, sin_, cos_ = _decompose_complex(z, is_log=True)
                 arrays_to_stack.extend([amp, sin_, cos_])
 
-        # --- 倾子 (6 维) ---
+        # --- Tipper (6 dims) ---
         if use_tipper:
             for z in (self.tzx, self.tzy):
                 amp, sin_, cos_ = _decompose_complex(z, is_log=True)
                 arrays_to_stack.extend([amp, sin_, cos_])
 
-        # --- 功率谱密度 (4 维) ---
+        # --- Power spectral density (4 dims) ---
         if use_psd:
             for arr in (self.ex, self.ey, self.hx, self.hy):
                 arrays_to_stack.append(robust_scaler(arr, is_log=True))
 
-        # --- 相位张量 (angles 4 维 + main 4 维，共享 calc_phase_tensor 计算) ---
+        # --- Phase tensor (angles 4 dims + main 4 dims, sharing calc_phase_tensor) ---
         if use_phase_tensor_angles or use_phase_tensor_main:
             p11s, p12s, p21s, p22s = [], [], [], []
             alphas, betas = [], []
@@ -182,7 +182,7 @@ class Params:
 
 
 # ---------------------------------------------------------------------------
-# 绘图
+# Plotting
 # ---------------------------------------------------------------------------
 
 RAW_LABELS = [
@@ -237,7 +237,7 @@ FEATURE_LABELS = [
     "Phase Tensor P22",
 ]
 
-RAW_LOG_INDICES = {12, 13, 14, 15}  # PSD 列使用对数坐标
+RAW_LOG_INDICES = {12, 13, 14, 15}  # PSD columns use a log scale
 
 
 def _plot_grid(
@@ -246,7 +246,7 @@ def _plot_grid(
     log_indices: set[int] | None = None,
     title: str = "",
 ):
-    """通用的特征网格绘图"""
+    """Generic feature-grid plot"""
     if log_indices is None:
         log_indices = set()
 
@@ -286,7 +286,7 @@ def _plot_grid(
         if i < last_row_start:
             axes[i].tick_params(labelbottom=False)
 
-    # 删除多余的空子图
+    # Remove unused empty subplots
     for i in range(n_features, len(axes)):
         fig.delaxes(axes[i])
 
@@ -301,22 +301,23 @@ def _plot_grid(
 
 
 def plot_raw(params: Params, title: str = ""):
-    """绘制 Params.to_matrix() 的原始数据"""
+    """Plot the raw data from Params.to_matrix()"""
     _plot_grid(params.to_matrix(), RAW_LABELS, log_indices=RAW_LOG_INDICES, title=title)
 
 
 def plot_features(features: np.ndarray, title: str = ""):
-    """绘制 to_deal_two() 处理后的特征"""
+    """Plot features after to_deal_two() processing"""
     _plot_grid(features, FEATURE_LABELS, title=title)
 
 
 if __name__ == "__main__":
+    # Demo only: set these paths to your local MT archive before running.
     from pathlib import Path
 
     from mt_py_lib import MTCal, MTFreqGroup, Spectrum, TimeSeries
 
-    temp_dir = Path(r"E:\MTPJ\TSN数据\temp_dir")
-    tbl = Path(r"E:\MTPJ\TSN数据\2021-漾濞地震区数据归档\YB006A.TBL")
+    temp_dir = Path(r"E:\path\to\temp_dir")
+    tbl = Path(r"E:\path\to\YB006A.TBL")
 
     ts3 = tbl.with_suffix(".TS3")
     ts4 = tbl.with_suffix(".TS4")

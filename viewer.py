@@ -1,5 +1,5 @@
 """
-FAW_Net Viewer — PySide6 交互式推理结果查看器
+FAW_Net Viewer — PySide6 interactive inference-result viewer
 """
 
 import math
@@ -33,7 +33,7 @@ from PySide6.QtWidgets import (
 from .model import FreqAdaptWeighter
 from .struct import PowerSpectrumMatrix, ResistivityPhase, SinglePSM
 
-# ── 完整 30 维特征标签 (抄自 param.py, 避免导入 param.py) ──
+# ── Full 30-dim feature labels (copied from param.py to avoid importing param.py) ──
 FEATURE_LABELS_30 = [
     "Zxx Amp",
     "Zxx Sin",
@@ -67,7 +67,7 @@ FEATURE_LABELS_30 = [
     "P22",
 ]
 
-# 30→20 维索引映射 (关闭 tipper + phase_tensor_angles)
+# 30→20 dim index mapping (tipper + phase_tensor_angles disabled)
 SELECTED_INDICES = [
     0,
     1,
@@ -94,15 +94,15 @@ FEATURE_LABELS_20 = [FEATURE_LABELS_30[i] for i in SELECTED_INDICES]
 
 
 class FeaturePair(NamedTuple):
-    """一个特征对散点图的配置"""
+    """Configuration for one feature-pair scatter plot"""
 
-    x_idx: int  # X 轴在 20 维特征中的索引
-    y_idx: int  # Y 轴在 20 维特征中的索引
-    x_label: str  # X 轴显示标签
-    y_label: str  # Y 轴显示标签
+    x_idx: int  # index of the X-axis feature in the 20-dim feature vector
+    y_idx: int  # index of the Y-axis feature in the 20-dim feature vector
+    x_label: str  # display label for the X axis
+    y_label: str  # display label for the Y axis
 
 
-# 5 个 Tab × 2 个特征对
+# 5 tabs × 2 feature pairs
 FEATURE_PAIRS: list[list[FeaturePair]] = [
     # Tab 1
     [
@@ -134,13 +134,13 @@ FEATURE_PAIRS: list[list[FeaturePair]] = [
 
 @dataclass
 class StationData:
-    """单个测点的推理结果
+    """Inference result for a single station
 
-    - weights: {freq: (n_seg,)} 模型对各谱段分配的 softmax 权重
-    - params:  {freq: (n_seg, 20)} 裁剪后的 20 维输入特征
-    - raw_psms: 按频点排序的原始 PowerSpectrumMatrix 列表
-    - denoised_psms: 各频点加权后合并的 SinglePSM 列表
-    - raw_rho_phi / denoised_rho_phi: 原始/加权后的视电阻率和相位
+    - weights: {freq: (n_seg,)} softmax weights assigned by the model to each spectral segment
+    - params:  {freq: (n_seg, 20)} cropped 20-dim input features
+    - raw_psms: original PowerSpectrumMatrix list sorted by frequency
+    - denoised_psms: SinglePSM list after weighted merging at each frequency
+    - raw_rho_phi / denoised_rho_phi: apparent resistivity and phase, raw / weighted
     """
 
     name: str
@@ -157,7 +157,7 @@ class StationData:
 
 
 class InferenceEngine:
-    """加载模型 + PKL → 前向推理 → 返回 StationData"""
+    """Load model + PKL → forward inference → return StationData"""
 
     def __init__(self, model_path: str | Path):
         self.model = FreqAdaptWeighter(n_features=20)
@@ -193,24 +193,26 @@ class InferenceEngine:
 
         name = Path(pkl_path).stem
         if "matrix" not in data or "param" not in data:
-            raise ValueError(f"PKL 文件缺少 matrix 或 param 键: {pkl_path}")
+            raise ValueError(f"PKL file is missing the matrix or param key: {pkl_path}")
 
         matrix_dict = data["matrix"]
         param_30 = data["param"]
 
-        # 验证 param 维度
+        # Validate param dimensions
         for f, m in param_30.items():
             if m.shape[1] < max(SELECTED_INDICES) + 1:
-                raise ValueError(f"{name} 频率 {f} 的特征维度 {m.shape[1]} < 30")
+                raise ValueError(
+                    f"{name}: feature dimension {m.shape[1]} at frequency {f} is less than 30"
+                )
 
         params_20 = self._crop_features(param_30)
         tensors = self._to_tensors(params_20)
         weights = self._infer(tensors)
 
-        # 对齐 matrix_dict 与 weights 的频点集合
+        # Align the frequency sets of matrix_dict and weights
         common_freqs = sorted(set(matrix_dict) & set(weights))
         if not common_freqs:
-            raise ValueError(f"{name}: matrix 与 weights 无共同频点")
+            raise ValueError(f"{name}: matrix and weights have no common frequencies")
 
         raw_psms = []
         for freq in common_freqs:
@@ -227,7 +229,7 @@ class InferenceEngine:
         denoised_psms = []
         for psm in raw_psms:
             w = weights[psm.freq]
-            # 手动加权平均各谱段的交叉功率谱矩阵
+            # Manually compute the weighted average of each segment's cross-power spectrum matrix
             matrices = [s.matrix for s in psm.psms]
             weighted_sum = sum(w[i] * matrices[i] for i in range(len(matrices)))
             total_weight = w.sum()
@@ -259,25 +261,25 @@ class InferenceEngine:
         self,
         dir_path: str | Path,
         num: int | None = None,
-        parent=None,  # ← 新增：传 MainWindow 进来
+        parent=None,  # ← new: pass in the MainWindow
     ) -> list[StationData]:
         path = Path(dir_path)
         pkl_files = sorted(path.glob("*.pkl"))
         if not pkl_files:
-            raise FileNotFoundError(f"在 {dir_path} 中未找到 .pkl 文件")
+            raise FileNotFoundError(f"No .pkl files found in {dir_path}")
         if num is not None:
             pkl_files = pkl_files[:num]
 
         total = len(pkl_files)
-        dlg = QProgressDialog("正在加载台站数据…", "取消", 0, total, parent)
-        dlg.setWindowTitle("加载进度")
+        dlg = QProgressDialog("Loading station data…", "Cancel", 0, total, parent)
+        dlg.setWindowTitle("Loading Progress")
         dlg.setWindowModality(Qt.WindowModality.WindowModal)
-        dlg.setMinimumDuration(0)  # 立即显示，默认要等 4 秒
+        dlg.setMinimumDuration(0)  # show immediately; default waits ~4 s
         dlg.setAutoClose(False)
         dlg.setAutoReset(False)
         dlg.setWindowFlag(
             Qt.WindowType.WindowContextHelpButtonHint, False
-        )  # 去掉标题栏 "?"
+        )  # remove the title-bar "?" button
 
         stations = []
         canceled = False
@@ -291,21 +293,21 @@ class InferenceEngine:
             try:
                 stations.append(self.load_pkl(pf))
             except Exception as e:
-                print(f"⚠ 跳过 {pf.name}: {e}")
+                print(f"⚠ Skipped {pf.name}: {e}")
 
         dlg.setValue(total)
         dlg.close()
         if canceled:
-            print(f"用户取消，已加载 {len(stations)}/{total}")
+            print(f"User canceled; loaded {len(stations)}/{total}")
         return stations
 
 
 class RhoPhiView(pg.PlotWidget):
-    """视电阻率 / 相位去噪前后对比图，支持点击选频和 2/4 分量切换"""
+    """Apparent resistivity / phase comparison before and after processing; supports click-to-select frequency and 2/4-component toggle"""
 
     frequency_selected = Signal(object)  # float
 
-    # 颜色: xx=紫, xy=红, yx=蓝, yy=深绿
+    # Colors: xx=purple, xy=red, yx=blue, yy=dark green
     COMP_COLORS = {
         "rxx": "#9b59b6",
         "rxy": "#e74c3c",
@@ -316,7 +318,7 @@ class RhoPhiView(pg.PlotWidget):
         "pyx": "#3498db",
         "pyy": "#27ae60",
     }
-    # 符号: xx=△(上三角), xy=○(圆), yx=□(方), yy=▽(下三角)
+    # Symbols: xx=triangle up, xy=circle, yx=square, yy=triangle down
     COMP_SYMBOLS = {
         "rxx": ("t", 0),
         "rxy": ("o", 0),
@@ -384,7 +386,7 @@ class RhoPhiView(pg.PlotWidget):
             sym, rot = self.COMP_SYMBOLS[c]
             label = self.COMP_LABELS[c]
 
-            # raw: 虚线 + 空心符号
+            # raw: dashed line + hollow symbols
             self._curves[f"{c}_raw"] = self.plot(
                 freqs,
                 raw_vals,
@@ -395,7 +397,7 @@ class RhoPhiView(pg.PlotWidget):
                 symbolPen=pg.mkPen(color, width=1.2),
                 symbolBrush=None,
             )
-            # denoised: 实线 + 实心符号 (只有 denoised 进图例)
+            # denoised: solid line + filled symbols (only denoised appears in the legend)
             self._curves[f"{c}_den"] = self.plot(
                 freqs,
                 den_vals,
@@ -447,7 +449,7 @@ class RhoPhiView(pg.PlotWidget):
 
 
 class ScatterView(pg.PlotWidget):
-    """特征对散点图，按模型权重着色 (绿高红低)"""
+    """Feature-pair scatter plot colored by model weight (green = high, red = low)"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -458,7 +460,7 @@ class ScatterView(pg.PlotWidget):
         self.setBackground("w")
         self.showGrid(x=True, y=True, alpha=0.3)
 
-        # 色标: jet (蓝→青→绿→黄→红), top-right, log 0.001~1
+        # Color bar: jet (blue→cyan→green→yellow→red), top-right, log 0.001~1
         grad = QLinearGradient(0, 1, 0, 0)
         for pos, rgb in [
             (0.00, (0, 0, 128)),
@@ -493,7 +495,7 @@ class ScatterView(pg.PlotWidget):
         y = features[:, self._pair.y_idx]
         w = weights
 
-        # 对数归一化: log10(weight) ∈ [-3, 0] 对应 0.001~1
+        # Log normalization: log10(weight) ∈ [-3, 0] maps to 0.001~1
         log_w_low = -3.0
         log_w_high = 0.0
 
@@ -501,7 +503,7 @@ class ScatterView(pg.PlotWidget):
         order = np.argsort(w)
         for idx in order:
             if w[idx] < 0.001:
-                # 低权重: 黑色空圈 (透明填充, 小一号)
+                # Low weight: black hollow circle (transparent fill, slightly smaller)
                 spots.append(
                     {
                         "pos": (x[idx], y[idx]),
@@ -529,7 +531,7 @@ class ScatterView(pg.PlotWidget):
 
     @staticmethod
     def _weight_color(ratio: float):
-        """ratio ∈ [0,1] → jet 色标"""
+        """ratio ∈ [0,1] → jet color scale"""
         # jet: blue(0) → cyan(0.25) → green(0.5) → yellow(0.75) → red(1)
         if ratio < 0.25:
             r = 0.0
@@ -551,7 +553,7 @@ class ScatterView(pg.PlotWidget):
 
 
 class ControlBar(QWidget):
-    """顶部控制栏: 测点导航 + Tab 切换 + 分量模式 + 自动播放"""
+    """Top control bar: station navigation + tab switching + component mode + auto-play"""
 
     station_changed = Signal(int)  # delta: +1 or -1
     tab_changed = Signal(int)  # 0-based tab index
@@ -565,16 +567,16 @@ class ControlBar(QWidget):
         layout.setContentsMargins(8, 4, 8, 4)
         layout.setSpacing(6)
 
-        # 测点导航
+        # Station navigation
         self.btn_prev = QPushButton("\u2190")
         self.btn_prev.setFixedWidth(32)
         self.lbl_station = QLabel("\u2014")
         self.lbl_station.setMinimumWidth(100)
         self.btn_next = QPushButton("\u2192")
         self.btn_next.setFixedWidth(32)
-        self.btn_dir = QPushButton("打开目录")
+        self.btn_dir = QPushButton("Open Directory")
 
-        # Tab 按钮组 (1-5)
+        # Tab button group (1-5)
         self.tab_btns: list[QPushButton] = []
         for i in range(5):
             btn = QPushButton(str(i + 1))
@@ -582,21 +584,21 @@ class ControlBar(QWidget):
             btn.setFixedSize(30, 26)
             self.tab_btns.append(btn)
 
-        # 分量模式
-        self.btn_2comp = QPushButton("2分量")
+        # Component mode
+        self.btn_2comp = QPushButton("2-comp")
         self.btn_2comp.setCheckable(True)
         self.btn_2comp.setChecked(True)
-        self.btn_4comp = QPushButton("4分量")
+        self.btn_4comp = QPushButton("4-comp")
         self.btn_4comp.setCheckable(True)
 
-        # 自动播放
-        self.btn_play = QPushButton("\u25b6 自动")
+        # Auto-play
+        self.btn_play = QPushButton("\u25b6 Auto")
         self.btn_play.setCheckable(True)
         self.cmb_interval = QComboBox()
         self.cmb_interval.addItems(["1s", "2s", "3s", "5s"])
         self.cmb_interval.setCurrentIndex(2)
 
-        # 组装
+        # Assemble layout
         layout.addWidget(self.btn_prev)
         layout.addWidget(self.lbl_station)
         layout.addWidget(self.btn_next)
@@ -609,11 +611,11 @@ class ControlBar(QWidget):
         layout.addWidget(self.btn_4comp)
         layout.addWidget(self._sep())
         layout.addWidget(self.btn_play)
-        layout.addWidget(QLabel("间隔:"))
+        layout.addWidget(QLabel("Interval:"))
         layout.addWidget(self.cmb_interval)
         layout.addStretch()
 
-        # 信号连接
+        # Signal connections
         self.btn_prev.clicked.connect(lambda: self.station_changed.emit(-1))
         self.btn_next.clicked.connect(lambda: self.station_changed.emit(1))
         self.btn_dir.clicked.connect(self.open_directory.emit)
@@ -623,7 +625,7 @@ class ControlBar(QWidget):
         for i, btn in enumerate(self.tab_btns):
             btn.clicked.connect(lambda checked, idx=i: self._on_tab(idx))
 
-        # 分组 2/4 分量按钮 (互斥)
+        # Group the 2/4-component buttons (mutually exclusive)
         self._comp_group = [self.btn_2comp, self.btn_4comp]
 
     @staticmethod
@@ -652,12 +654,12 @@ class ControlBar(QWidget):
         self.component_mode_changed.emit(mode)
 
     def _on_play_toggled(self, checked: bool):
-        self.btn_play.setText("\u23f8" if checked else "\u25b6 自动")
+        self.btn_play.setText("\u23f8" if checked else "\u25b6 Auto")
         self.play_toggled.emit(checked)
 
 
 class MainWindow(QMainWindow):
-    """主窗口: 控制栏 + 2x2 网格 + 状态栏"""
+    """Main window: control bar + 2x2 grid + status bar"""
 
     def __init__(self, engine: InferenceEngine, stations: list[StationData]):
         super().__init__()
@@ -667,7 +669,7 @@ class MainWindow(QMainWindow):
         self.current_tab = 0
         self.current_freq: float | None = None
 
-        self.setWindowTitle("FAW_Net Viewer — MT 选谱权重查看器")
+        self.setWindowTitle("FAW_Net Viewer — MT Spectral Weight Viewer")
         self.resize(1400, 900)
 
         central = QWidget()
@@ -676,11 +678,11 @@ class MainWindow(QMainWindow):
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # 控制栏
+        # Control bar
         self.control = ControlBar()
         main_layout.addWidget(self.control)
 
-        # 2x2 网格
+        # 2x2 grid
         grid = QGridLayout()
         grid.setSpacing(4)
         main_layout.addLayout(grid, 1)
@@ -695,18 +697,18 @@ class MainWindow(QMainWindow):
         grid.addWidget(self.phi_view, 1, 0)
         grid.addWidget(self.scatter_b, 1, 1)
 
-        # 状态栏
+        # Status bar
         status_bar = QStatusBar()
         status_bar.setStyleSheet("QStatusBar{font-size:11px; color:#aaa;}")
         self.setStatusBar(status_bar)
         self.status_label = QLabel("Ready")
         status_bar.addWidget(self.status_label)
 
-        # 自动播放
+        # Auto-play
         self._timer = QTimer()
         self._timer.timeout.connect(self._auto_next)
 
-        # 信号连接
+        # Signal connections
         self.control.station_changed.connect(self._on_station_delta)
         self.control.tab_changed.connect(self._on_tab)
         self.control.component_mode_changed.connect(self._on_component_mode)
@@ -715,18 +717,18 @@ class MainWindow(QMainWindow):
         self.rho_view.frequency_selected.connect(self._on_freq_selected)
         self.phi_view.frequency_selected.connect(self._on_freq_selected)
 
-        # 初始显示
+        # Initial display
         self._on_tab(0)
         if self.stations:
             self.show_station(0)
 
-    # ── 快捷键 ──
+    # ── Keyboard shortcuts ──
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Left:
-            self._on_freq_delta(1)  # -> 下一个(更高频)
+            self._on_freq_delta(1)  # -> next (higher frequency)
         elif event.key() == Qt.Key_Right:
-            self._on_freq_delta(-1)  # -> 上一个(更低频)
+            self._on_freq_delta(-1)  # -> previous (lower frequency)
         elif event.key() == Qt.Key_Up:
             self._on_station_delta(-1)
         elif event.key() == Qt.Key_Down:
@@ -738,7 +740,7 @@ class MainWindow(QMainWindow):
         else:
             super().keyPressEvent(event)
 
-    # ── 测点 ──
+    # ── Stations ──
 
     def show_station(self, idx: int):
         if idx < 0 or idx >= len(self.stations):
@@ -758,7 +760,7 @@ class MainWindow(QMainWindow):
             station.frequencies,
         )
 
-        # 默认选中中间频率
+        # Select the middle frequency by default
         mid_freq = station.frequencies[len(station.frequencies) // 2]
         self._on_freq_selected(mid_freq)
         self._update_status()
@@ -769,7 +771,7 @@ class MainWindow(QMainWindow):
             return
         self.show_station((self.current_idx + delta) % n)
 
-    # ── 频率 ──
+    # ── Frequency ──
 
     def _on_freq_selected(self, freq: float):
         self.current_freq = freq
@@ -797,7 +799,7 @@ class MainWindow(QMainWindow):
         idx = (idx + delta) % len(freqs)
         self._on_freq_selected(freqs[idx])
 
-    # ── Tab ──
+    # ── Tabs ──
 
     def _on_tab(self, idx: int):
         self.current_tab = idx
@@ -808,13 +810,13 @@ class MainWindow(QMainWindow):
         if self.current_freq is not None:
             self._on_freq_selected(self.current_freq)
 
-    # ── 分量模式 ──
+    # ── Component mode ──
 
     def _on_component_mode(self, mode: int):
         self.rho_view.set_component_mode(mode)
         self.phi_view.set_component_mode(mode)
 
-    # ── 自动播放 ──
+    # ── Auto-play ──
 
     def _on_play(self, playing: bool):
         if playing:
@@ -828,23 +830,23 @@ class MainWindow(QMainWindow):
         if self.control.btn_play.isChecked():
             self._timer.start(self.control.get_interval_ms())
 
-    # ── 打开目录 ──
+    # ── Open directory ──
 
     def _open_dir(self):
-        dir_path = QFileDialog.getExistingDirectory(self, "选择 PKL 目录")
+        dir_path = QFileDialog.getExistingDirectory(self, "Select PKL Directory")
         if not dir_path:
             return
         try:
             new_stations = self.engine.load_directory(dir_path)
             if not new_stations:
-                QMessageBox.warning(self, "警告", "未找到可用的 .pkl 文件")
+                QMessageBox.warning(self, "Warning", "No usable .pkl files found")
                 return
             self.stations = new_stations
             self.show_station(0)
         except Exception as e:
-            QMessageBox.critical(self, "错误", f"加载目录失败: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load directory: {e}")
 
-    # ── 状态 ──
+    # ── Status ──
 
     def _update_status(self):
         station = self.stations[self.current_idx]
@@ -866,7 +868,7 @@ def main():
 
     model_path = Path(__file__).parent / "best_model.pth"
     if not model_path.exists():
-        QMessageBox.critical(None, "错误", "未找到 best_model.pth")
+        QMessageBox.critical(None, "Error", "best_model.pth not found")
         sys.exit(1)
 
     engine = InferenceEngine(model_path)
@@ -878,7 +880,7 @@ def main():
         stations = []
 
     if not stations:
-        dir_path = QFileDialog.getExistingDirectory(None, "选择 PKL 目录")
+        dir_path = QFileDialog.getExistingDirectory(None, "Select PKL Directory")
         if dir_path:
             stations = engine.load_directory(dir_path)
 
